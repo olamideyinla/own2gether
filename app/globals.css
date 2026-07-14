@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  /* Smooth focus rings using the teal accent */
+  :focus-visible {
+    outline: 2px solid #2E6F5E;
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* Progress bar: element is already sized to the target %; the animation
+     scales from 0 → 1 on that width so it appears to grow from left.
+     Uses transform-origin: left (set via Tailwind class origin-left). */
+  .animate-progress {
+    animation: progress-grow 0.7s ease-out forwards;
+  }
+}

@@ -1,0 +1,438 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum KycStatus {
+  unverified
+  pending
+  verified
+}
+
+enum DocumentType {
+  passport
+  drivers_license
+  national_id
+}
+
+enum DocumentStatus {
+  pending
+  approved
+  rejected
+}
+
+enum PropertyStatus {
+  open
+  fully_allocated
+  fully_sold_out
+  closed
+  cancelled
+}
+
+enum CommitmentStatus {
+  pending
+  allocated
+  partially_allocated
+  capped
+  payment_submitted   // receipt uploaded by co-owner, awaiting admin confirmation
+  withdrawn
+  paid
+}
+
+enum DealType {
+  rehabilitation   // Existing structure being renovated / restored
+  ground_up        // New construction from cleared or undeveloped land
+  off_plan         // Purchase of uncompleted developer stock at pre-construction pricing
+}
+
+enum DealStatus {
+  coming_soon   // Teaser — not yet open for commitments
+  open          // Accepting investor commitments
+  funded        // Target raise met; no new commitments accepted
+  in_progress   // Capital deployed, development / renovation underway
+  completed     // Exit achieved; profits distributed to investors
+  cancelled     // Deal abandoned; any funds returned to investors
+}
+
+enum DealCommitmentStatus {
+  pending            // Placed by investor, awaiting admin confirmation
+  allocated          // Confirmed slot in the raise
+  payment_submitted  // Receipt uploaded by investor, awaiting admin verification
+  paid               // Payment confirmed by admin
+  withdrawn          // Investor withdrew before funding
+  refunded           // Paid but deal was cancelled; refund processed
+}
+
+enum MilestoneStatus {
+  upcoming
+  in_progress
+  completed
+  delayed
+}
+
+enum StakeSource {
+  // Own2gether's baseline equity, always at least 2.5%, taken as compensation
+  // for deal structuring and ongoing property management (PRD 4.1).
+  management_fee
+  // A co-owner's proportional share of the 97.5% co-owner pool (PRD 4.2).
+  co_owner
+  // Own2gether buying a residual unfilled slot after allocation, increasing
+  // its stake above the 2.5% floor (PRD 4.2, 5.2).
+  residual_buy_in
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+// A persistent account required before any commitment can be made (PRD 8.1).
+// KYC is checked once, the first time a commitment would receive an allocation.
+model Profile {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String?
+  phone        String?
+  kycStatus    KycStatus @default(unverified)
+  createdAt    DateTime  @default(now())
+
+  // CAC registration details — required for SPV shareholder records
+  dateOfBirth        DateTime? @db.Date
+  nationality        String?
+  occupation         String?
+  residentialAddress String?
+
+  identityDocuments IdentityDocument[]
+  commitments       Commitment[]
+  withdrawals       Withdrawal[]
+  stakes            Stake[]
+  connectionGroups  ConnectionGroup[]
+  sessions          ProfileSession[]
+  notifications     Notification[]
+  propertyMessages  PropertyMessage[]
+  dealCommitments   DealCommitment[]
+}
+
+/// A user session token stored in a httpOnly cookie.
+/// Created on sign-in or sign-up; expires after 30 days.
+model ProfileSession {
+  id        String   @id @default(cuid())
+  profileId String
+  token     String   @unique @default(cuid())
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  profile Profile @relation(fields: [profileId], references: [id])
+
+  @@index([profileId])
+  @@index([token])
+}
+
+// Submitted once per profile before their first allocation is confirmed (PRD 8.2).
+// Reviewed within 3 days of submission.
+model IdentityDocument {
+  id                String         @id @default(cuid())
+  profileId         String
+  type              DocumentType
+  documentNumber    String?
+  expiryDate        DateTime?      @db.Date
+  /// Vercel Blob path — never exposed in profile-facing responses.
+  fileUrl           String
+  /// Vercel Blob path — never exposed in profile-facing responses.
+  proofOfAddressUrl String
+  submittedAt       DateTime       @default(now())
+  reviewedAt        DateTime?
+  status            DocumentStatus @default(pending)
+  rejectionReason   String?
+  reviewedByName    String?
+
+  profile Profile @relation(fields: [profileId], references: [id])
+
+  @@index([profileId])
+}
+
+// A single property offered on the platform.
+// totalRaise = propertyPrice + legalFees + otherCosts (PRD 4.3).
+// Stored redundantly for query convenience; must be kept consistent in code.
+// All monetary fields are in Nigerian naira (NGN).
+model Property {
+  id            String         @id @default(cuid())
+  title         String
+  location      String
+  description   String?
+  photos        String[]
+  videos        String[]
+  propertyPrice Decimal        @db.Decimal(15, 2)
+  legalFees     Decimal        @db.Decimal(15, 2)
+  otherCosts    Decimal        @db.Decimal(15, 2)
+  totalRaise    Decimal        @db.Decimal(15, 2)
+  status        PropertyStatus @default(open)
+  createdAt     DateTime       @default(now())
+  /// Set by the subscriber-notify cron 60 min after creation.
+  subscriberNotifiedAt DateTime?
+  // Physical attributes (optional)
+  propertyType String?
+  bedrooms     Int?
+  bathrooms    Int?
+  areaSize     String?
+
+  commitments      Commitment[]
+  stakes           Stake[]
+  connectionGroups ConnectionGroup[]
+  messages         PropertyMessage[]
+}
+
+// A set of profiles who have linked their commitments to rank as one combined
+// entry in the allocation process (PRD 2.2, 5.3).
+// One member generates the code and shares it; others enter it when committing.
+// The group's combined amount = sum of all member commitments with this groupId.
+model ConnectionGroup {
+  id                 String @id @default(cuid())
+  propertyId         String
+  code               String @unique
+  createdByProfileId String
+
+  property  Property @relation(fields: [propertyId], references: [id])
+  createdBy Profile  @relation(fields: [createdByProfileId], references: [id])
+
+  commitments Commitment[]
+
+  @@index([propertyId])
+}
+
+// An amount pledged by one profile toward one property (PRD glossary).
+// Not a binding payment until allocated. Minimum 7.5% of totalRaise (PRD 5.2).
+// paymentDueAt = allocationConfirmedAt + 10 days (PRD 7.2); set in application
+// code when allocationConfirmedAt is written.
+model Commitment {
+  id                    String           @id @default(cuid())
+  profileId             String
+  propertyId            String
+  connectionGroupId     String?
+  amount                Decimal          @db.Decimal(15, 2)
+  status                CommitmentStatus @default(pending)
+  allocatedAmount       Decimal?         @db.Decimal(15, 2)
+  createdAt             DateTime         @default(now())
+  allocationConfirmedAt DateTime?
+  paymentDueAt          DateTime?
+  paidAt                DateTime?
+  /// Vercel Blob URL for the bank payment receipt uploaded by the co-owner.
+  paymentReceiptUrl     String?
+  paymentSubmittedAt    DateTime?
+
+  profile         Profile          @relation(fields: [profileId], references: [id])
+  property        Property         @relation(fields: [propertyId], references: [id])
+  connectionGroup ConnectionGroup? @relation(fields: [connectionGroupId], references: [id])
+  withdrawals     Withdrawal[]
+
+  @@index([profileId])
+  @@index([propertyId])
+  @@index([connectionGroupId])
+}
+
+// One record per withdrawal event (PRD 5.2a).
+// A profile may withdraw up to 3 times across all properties; the 4th attempt
+// is blocked until 12 months after the date of the FIRST withdrawal in the sequence.
+// (Open item: whether the count resets after a lockout — PRD 5.2a open item.)
+model Withdrawal {
+  id           String   @id @default(cuid())
+  profileId    String
+  commitmentId String
+  withdrawnAt  DateTime @default(now())
+
+  profile    Profile    @relation(fields: [profileId], references: [id])
+  commitment Commitment @relation(fields: [commitmentId], references: [id])
+
+  @@index([profileId])
+  @@index([commitmentId])
+}
+
+// Cap table for a property's dedicated company (PRD 6.1).
+// All stakes for a property always sum to 100%.
+// profileId = null means the stake belongs to Own2gether.
+// Own2gether's combined stakes (management_fee + any residual_buy_in) >= 2.5%.
+// Co-owner percentages are calculated against the 97.5% co-owner pool (PRD 4.2):
+//   profile_pct = (commitment_amount / totalRaise) * 97.5
+model Stake {
+  id         String      @id @default(cuid())
+  propertyId String
+  profileId  String?
+  percentage Decimal     @db.Decimal(7, 4)
+  source     StakeSource
+
+  property Property @relation(fields: [propertyId], references: [id])
+  profile  Profile? @relation(fields: [profileId], references: [id])
+
+  @@index([propertyId])
+  @@index([profileId])
+}
+
+// In-app notification sent to a profile or to the admin team.
+// profileId = null + adminOnly = true  → visible only in admin panel.
+// profileId = set  + adminOnly = false → visible in the user's notification centre.
+model Notification {
+  id        String   @id @default(cuid())
+  profileId String?
+  adminOnly Boolean  @default(false)
+  type      String   // 'kyc_approved' | 'kyc_rejected' | 'allocation' | 'receipt_uploaded' | 'message'
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  profile Profile? @relation(fields: [profileId], references: [id])
+
+  @@index([profileId])
+  @@index([read])
+}
+
+// A message posted by a co-owner on a property's owner hub.
+// Visible to all co-owners with a Stake in the same property.
+model PropertyMessage {
+  id         String   @id @default(cuid())
+  propertyId String
+  profileId  String
+  body       String
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id])
+  profile  Profile  @relation(fields: [profileId], references: [id])
+
+  @@index([propertyId])
+  @@index([profileId])
+}
+
+// ─── Deals ────────────────────────────────────────────────────────────────────
+
+/// A development joint-venture deal (rehabilitation, ground-up, or off-plan).
+/// Unlike a Listing (equity co-ownership), a Deal uses a profit-split model:
+/// investors fund the project and receive investorProfitSplitPct of net proceeds
+/// on exit; Own2gether retains the remainder as its return.
+/// All monetary fields are NGN.
+model Deal {
+  id          String     @id @default(cuid())
+  title       String
+  location    String
+  description String?
+  dealType    DealType
+  status      DealStatus @default(coming_soon)
+
+  /// Total capital required for this project (NGN).
+  targetRaise   Decimal @db.Decimal(15, 2)
+  /// Minimum commitment per investor (flat NGN amount, set per deal).
+  minCommitment Decimal @db.Decimal(15, 2)
+
+  /// Projected gross return on invested capital (guide only, not a guarantee).
+  projectedReturnPct      Decimal? @db.Decimal(6, 2)
+  /// Projected project duration in months.
+  projectedDurationMonths Int?
+  /// Percentage of net profit paid to investors. Default 60 (= 60%).
+  investorProfitSplitPct  Decimal  @db.Decimal(5, 2) @default(60)
+
+  photos    String[]
+  videos    String[]
+  /// Pitch decks, feasibility studies, planning approvals, QS reports, etc.
+  documents String[]
+
+  createdAt   DateTime  @default(now())
+  openedAt    DateTime?
+  fundedAt    DateTime?
+  completedAt DateTime?
+  /// Set by the subscriber-notify cron 60 min after creation.
+  subscriberNotifiedAt DateTime?
+
+  commitments DealCommitment[]
+  milestones  DealMilestone[]
+  updates     DealUpdate[]
+}
+
+/// An investor's capital commitment to a Deal.
+/// First-come first-served until targetRaise is met (no ranking engine).
+model DealCommitment {
+  id        String              @id @default(cuid())
+  dealId    String
+  profileId String
+  amount    Decimal             @db.Decimal(15, 2)
+  status    DealCommitmentStatus @default(pending)
+
+  createdAt             DateTime  @default(now())
+  allocationConfirmedAt DateTime?
+  paymentDueAt          DateTime?
+  paymentReceiptUrl     String?
+  paymentSubmittedAt    DateTime?
+  paidAt                DateTime?
+
+  deal    Deal    @relation(fields: [dealId], references: [id])
+  profile Profile @relation(fields: [profileId], references: [id])
+
+  @@index([dealId])
+  @@index([profileId])
+}
+
+/// A project milestone visible to all investors on the deal detail page.
+model DealMilestone {
+  id          String          @id @default(cuid())
+  dealId      String
+  title       String
+  description String?
+  targetDate  DateTime?       @db.Date
+  completedAt DateTime?
+  status      MilestoneStatus @default(upcoming)
+  sortOrder   Int             @default(0)
+
+  deal Deal @relation(fields: [dealId], references: [id])
+
+  @@index([dealId])
+}
+
+/// A progress update posted by the admin team, visible to all deal investors.
+model DealUpdate {
+  id        String   @id @default(cuid())
+  dealId    String
+  title     String
+  body      String
+  photoUrls String[]
+  createdAt DateTime @default(now())
+
+  deal Deal @relation(fields: [dealId], references: [id])
+
+  @@index([dealId])
+}
+
+/// Email subscriber who opted in to new listing and/or deal notifications.
+model Subscriber {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  name              String?
+  subscribeListings Boolean  @default(true)
+  subscribeDeals    Boolean  @default(true)
+  unsubscribeToken  String   @unique @default(cuid())
+  createdAt         DateTime @default(now())
+}
+
+/// A message submitted via the public /contact form.
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+/// Singleton row (id = 1 always) caching the latest NGN → USD / GBP rates.
+/// Shared across all app instances so every server reads the same cached value.
+/// Written only on successful live fetches; never written on fallback.
+model FxRateCache {
+  id        Int      @id
+  usdPerNgn Float
+  gbpPerNgn Float
+  fetchedAt DateTime
+}
