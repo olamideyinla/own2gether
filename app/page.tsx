@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
     select: { location: true },
   })
   const cities = uniqueCities(properties.map((p) => p.location))
-  const geo = cities.length ? `${formatCityList(cities)} and across Nigeria` : 'Nigeria'
+  const geo = cities.length ? `${cities.join(', ')} and across Nigeria` : 'Nigeria'
 
   const description =
     `Fractional property ownership in ${geo}. Browse open raises to co-own real estate — pool funds with other local and diaspora investors, get registered shares in a property company, and co-invest in development deals. No fund, no cash fees.`
