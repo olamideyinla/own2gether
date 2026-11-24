@@ -1,9 +1,11 @@
 export const dynamic = 'force-dynamic'
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { db } from '@/lib/db'
 import { formatNGN, formatNGNCompact } from '@/lib/currency'
+import { JsonLd } from '@/components/JsonLd'
 import { Header } from '@/components/Header'
 import { Footer } from '@/components/Footer'
 import { DealCommitmentForm } from './DealCommitmentForm'
@@ -32,6 +34,44 @@ const MILESTONE_STATUS_CONFIG: Record<string, { dot: string; label: string }> = 
 }
 
 type PageProps = { params: Promise<{ id: string }> }
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { id } = await params
+  const deal = await db.deal.findUnique({
+    where:  { id },
+    select: { title: true, location: true, description: true, photos: true, dealType: true, targetRaise: true, projectedReturnPct: true },
+  })
+
+  if (!deal) return { title: 'Deal not found' }
+
+  const typeLabel = DEAL_TYPE_LABELS[deal.dealType] ?? 'development'
+  const returnBit = deal.projectedReturnPct != null ? ` Projected return ${Number(deal.projectedReturnPct)}%.` : ''
+  const title = `Co-invest in ${deal.title} — ${deal.location}`
+  const description =
+    deal.description?.trim().slice(0, 155) ||
+    `Co-invest in this ${typeLabel.toLowerCase()} property project in ${deal.location}, Nigeria. Pool capital with other investors and share 60% of net profit on exit.${returnBit}`
+
+  const url = `https://www.own2gether.com/deals/${id}`
+
+  return {
+    title,
+    description,
+    alternates: { canonical: `/deals/${id}` },
+    openGraph: {
+      type: 'article',
+      title: `${title} — Own2gether`,
+      description,
+      url,
+      images: deal.photos?.length ? [{ url: deal.photos[0] }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${title} — Own2gether`,
+      description,
+      images: deal.photos?.length ? [deal.photos[0]] : undefined,
+    },
+  }
+}
 
 export default async function DealPage({ params }: PageProps) {
   const { id } = await params
@@ -62,8 +102,20 @@ export default async function DealPage({ params }: PageProps) {
   const statusCfg      = STATUS_CONFIG[deal.status] ?? { label: deal.status, classes: 'bg-surface-info text-text-secondary' }
   const own2getherPct  = 100 - Number(deal.investorProfitSplitPct)
 
+  const dealLd = {
+    '@context': 'https://schema.org',
+    '@type': 'InvestmentOrDeposit',
+    name: deal.title,
+    description: deal.description?.trim() || `Co-invest in ${deal.title}, a property development project in ${deal.location}, Nigeria.`,
+    url: `https://www.own2gether.com/deals/${id}`,
+    image: deal.photos?.length ? deal.photos : undefined,
+    amount: { '@type': 'MonetaryAmount', currency: 'NGN', value: targetRaise },
+    provider: { '@type': 'Organization', name: 'Own2gether', url: 'https://www.own2gether.com' },
+  }
+
   return (
     <>
+      <JsonLd data={dealLd} />
       <Header />
 
       <main className="max-w-5xl mx-auto px-6 py-10">

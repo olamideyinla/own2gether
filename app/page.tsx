@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 
+import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { Prisma } from '@prisma/client'
 import Link from 'next/link'
@@ -11,6 +12,19 @@ import { PropertyCard, type PropertyCardData } from '@/components/PropertyCard'
 import { DealCard, type DealCardData } from '@/components/DealCard'
 import { FilterPills } from '@/components/FilterPills'
 import { SubscribeForm } from '@/components/SubscribeForm'
+
+export const metadata: Metadata = {
+  title: 'Co-Own Property in Nigeria — Fractional Ownership Raises',
+  description:
+    'Browse open raises to co-own real property in Nigeria. Pool funds with other local and diaspora investors, get registered shares in a property company, and co-invest in development deals — no fund, no cash fees.',
+  alternates: { canonical: '/' },
+  openGraph: {
+    title: 'Co-Own Property in Nigeria — Fractional Ownership Raises | Own2gether',
+    description:
+      'Pool funds with other investors to co-own real property in Nigeria. Browse open raises in naira — no fund, no cash fees.',
+    url: 'https://www.own2gether.com',
+  },
+}
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 
@@ -129,10 +143,23 @@ export default async function HomePage({
 
       <main className="max-w-6xl mx-auto px-6 py-10">
 
+        {/* ── Page hero ── */}
+        <div className="mb-10 max-w-3xl">
+          <h1 className="text-[28px] sm:text-[34px] font-bold text-navy leading-tight tracking-tight">
+            Co-own real property in Nigeria
+          </h1>
+          <p className="text-text-secondary text-[15px] mt-3 leading-relaxed">
+            Own2gether lets local and diaspora investors pool funds to jointly buy
+            real property through fractional co-ownership. Commit in naira, receive
+            registered shares in a dedicated property company, and co-invest in
+            development deals — no fund, no cash fees.
+          </p>
+        </div>
+
         {/* ── Listings ── */}
         <div className="flex items-start justify-between gap-6 mb-7 flex-wrap">
           <div>
-            <h1 className="text-[22px] font-bold text-navy leading-tight">Listings</h1>
+            <h2 className="text-[22px] font-bold text-navy leading-tight">Property listings</h2>
             <p className="text-text-muted text-[13px] mt-1">
               {openCount} open raise{openCount !== 1 ? 's' : ''} · {totalCount} total
             </p>
