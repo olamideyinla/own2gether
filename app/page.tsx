@@ -12,18 +12,34 @@ import { PropertyCard, type PropertyCardData } from '@/components/PropertyCard'
 import { DealCard, type DealCardData } from '@/components/DealCard'
 import { FilterPills } from '@/components/FilterPills'
 import { SubscribeForm } from '@/components/SubscribeForm'
+import { uniqueCities, formatCityList } from '@/lib/location'
 
-export const metadata: Metadata = {
-  title: 'Fractional Property Ownership in Nigeria — Co-Own Real Estate',
-  description:
-    'Browse open raises to co-own real property in Nigeria. Pool funds with other local and diaspora investors, get registered shares in a property company, and co-invest in development deals — no fund, no cash fees.',
-  alternates: { canonical: '/' },
-  openGraph: {
-    title: 'Fractional Property Ownership in Nigeria — Co-Own Real Estate | Own2gether',
-    description:
-      'Pool funds with other investors to co-own real property in Nigeria. Browse open raises in naira — no fund, no cash fees.',
-    url: 'https://www.own2gether.com',
-  },
+export async function generateMetadata(): Promise<Metadata> {
+  const properties = await db.property.findMany({
+    where:  { status: { not: 'cancelled' } },
+    select: { location: true },
+  })
+  const cities = uniqueCities(properties.map((p) => p.location))
+  const cityPhrase = cities.length ? ` in ${formatCityList(cities)}` : ''
+
+  const description =
+    `Fractional property ownership in Nigeria${cityPhrase}. Browse open raises to co-own real estate — pool funds with other local and diaspora investors, get registered shares in a property company, and co-invest in development deals. No fund, no cash fees.`
+
+  return {
+    title: 'Fractional Property Ownership in Nigeria — Co-Own Real Estate',
+    description,
+    keywords: [
+      'fractional property ownership Nigeria',
+      ...cities.map((c) => `fractional property ownership ${c}`),
+      ...cities.map((c) => `co-own property in ${c}`),
+    ],
+    alternates: { canonical: '/' },
+    openGraph: {
+      title: 'Fractional Property Ownership in Nigeria — Co-Own Real Estate | Own2gether',
+      description,
+      url: 'https://www.own2gether.com',
+    },
+  }
 }
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
@@ -132,6 +148,11 @@ export default async function HomePage({
   const openCount  = cards.filter((c) => c.status === 'open').length
   const totalCount = cards.length
 
+  const cities = uniqueCities([
+    ...properties.map((p) => p.location),
+    ...rawDeals.map((d) => d.location),
+  ])
+
   return (
     <>
       <Header />
@@ -154,6 +175,11 @@ export default async function HomePage({
             registered shares in a dedicated property company, and co-invest in
             development deals — no fund, no cash fees.
           </p>
+          {cities.length > 0 && (
+            <p className="text-text-muted text-[13px] mt-3">
+              Currently raising in {formatCityList(cities)}.
+            </p>
+          )}
         </div>
 
         {/* ── Listings ── */}

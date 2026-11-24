@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
+import { extractCity } from '@/lib/location'
 import { JsonLd } from '@/components/JsonLd'
 import { getFxRates, fxApproxLine, fxConvert, fxTimestampLabel } from '@/lib/fx'
 import { formatNGN, formatNGNCompact } from '@/lib/currency'
@@ -87,16 +88,23 @@ export async function generateMetadata({
   if (!property) return { title: 'Listing not found' }
 
   const typeLabel = property.propertyType ? `${property.propertyType} ` : ''
+  const city = extractCity(property.location)
   const title = `Co-own ${property.title} in ${property.location}`
   const description =
     property.description?.trim().slice(0, 155) ||
-    `Co-own this ${typeLabel}property in ${property.location}, Nigeria through fractional property ownership. Pool funds with other investors — commit in naira and receive registered shares. Raise target ${formatNGNCompact(Number(property.totalRaise))}.`
+    `Fractional property ownership in ${city}, Nigeria. Co-own this ${typeLabel}property in ${property.location} — pool funds with other investors, commit in naira, and receive registered shares. Raise target ${formatNGNCompact(Number(property.totalRaise))}.`
 
   const url = `https://www.own2gether.com/listings/${id}`
 
   return {
     title,
     description,
+    keywords: [
+      `fractional property ownership ${city}`,
+      `co-own property in ${city}`,
+      `property for sale ${city}`,
+      `buy property together ${city}`,
+    ],
     alternates: { canonical: `/listings/${id}` },
     openGraph: {
       type: 'article',

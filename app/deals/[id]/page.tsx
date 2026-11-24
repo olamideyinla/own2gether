@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { db } from '@/lib/db'
 import { formatNGN, formatNGNCompact } from '@/lib/currency'
+import { extractCity } from '@/lib/location'
 import { JsonLd } from '@/components/JsonLd'
 import { Header } from '@/components/Header'
 import { Footer } from '@/components/Footer'
@@ -46,16 +47,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const typeLabel = DEAL_TYPE_LABELS[deal.dealType] ?? 'development'
   const returnBit = deal.projectedReturnPct != null ? ` Projected return ${Number(deal.projectedReturnPct)}%.` : ''
+  const city = extractCity(deal.location)
   const title = `Co-invest in ${deal.title} — ${deal.location}`
   const description =
     deal.description?.trim().slice(0, 155) ||
-    `Co-invest in this ${typeLabel.toLowerCase()} property project in ${deal.location}, Nigeria. Pool capital with other investors and share 60% of net profit on exit.${returnBit}`
+    `Co-invest in this ${typeLabel.toLowerCase()} property project in ${deal.location}, Nigeria. Pool capital with other investors in ${city} and share 60% of net profit on exit.${returnBit}`
 
   const url = `https://www.own2gether.com/deals/${id}`
 
   return {
     title,
     description,
+    keywords: [
+      `property investment ${city}`,
+      `property development deals ${city}`,
+      `co-invest in property ${city} Nigeria`,
+      `real estate investment ${city}`,
+    ],
     alternates: { canonical: `/deals/${id}` },
     openGraph: {
       type: 'article',
