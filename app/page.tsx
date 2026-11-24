@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 
+import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { Prisma } from '@prisma/client'
 import Link from 'next/link'
@@ -11,6 +12,35 @@ import { PropertyCard, type PropertyCardData } from '@/components/PropertyCard'
 import { DealCard, type DealCardData } from '@/components/DealCard'
 import { FilterPills } from '@/components/FilterPills'
 import { SubscribeForm } from '@/components/SubscribeForm'
+import { uniqueCities, formatCityList } from '@/lib/location'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const properties = await db.property.findMany({
+    where:  { status: { not: 'cancelled' } },
+    select: { location: true },
+  })
+  const cities = uniqueCities(properties.map((p) => p.location))
+  const cityPhrase = cities.length ? ` in ${formatCityList(cities)}` : ''
+
+  const description =
+    `Fractional property ownership in Nigeria${cityPhrase}. Browse open raises to co-own real estate — pool funds with other local and diaspora investors, get registered shares in a property company, and co-invest in development deals. No fund, no cash fees.`
+
+  return {
+    title: 'Fractional Property Ownership in Nigeria — Co-Own Real Estate',
+    description,
+    keywords: [
+      'fractional property ownership Nigeria',
+      ...cities.map((c) => `fractional property ownership ${c}`),
+      ...cities.map((c) => `co-own property in ${c}`),
+    ],
+    alternates: { canonical: '/' },
+    openGraph: {
+      title: 'Fractional Property Ownership in Nigeria — Co-Own Real Estate | Own2gether',
+      description,
+      url: 'https://www.own2gether.com',
+    },
+  }
+}
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 
@@ -118,6 +148,11 @@ export default async function HomePage({
   const openCount  = cards.filter((c) => c.status === 'open').length
   const totalCount = cards.length
 
+  const cities = uniqueCities([
+    ...properties.map((p) => p.location),
+    ...rawDeals.map((d) => d.location),
+  ])
+
   return (
     <>
       <Header />
@@ -129,10 +164,28 @@ export default async function HomePage({
 
       <main className="max-w-6xl mx-auto px-6 py-10">
 
+        {/* ── Page hero ── */}
+        <div className="mb-10 max-w-3xl">
+          <h1 className="text-[28px] sm:text-[34px] font-bold text-navy leading-tight tracking-tight">
+            Co-own real property in Nigeria
+          </h1>
+          <p className="text-text-secondary text-[15px] mt-3 leading-relaxed">
+            Own2gether lets local and diaspora investors pool funds to jointly buy
+            real property through fractional co-ownership. Commit in naira, receive
+            registered shares in a dedicated property company, and co-invest in
+            development deals — no fund, no cash fees.
+          </p>
+          {cities.length > 0 && (
+            <p className="text-text-muted text-[13px] mt-3">
+              Currently raising in {formatCityList(cities)}.
+            </p>
+          )}
+        </div>
+
         {/* ── Listings ── */}
         <div className="flex items-start justify-between gap-6 mb-7 flex-wrap">
           <div>
-            <h1 className="text-[22px] font-bold text-navy leading-tight">Listings</h1>
+            <h2 className="text-[22px] font-bold text-navy leading-tight">Property listings</h2>
             <p className="text-text-muted text-[13px] mt-1">
               {openCount} open raise{openCount !== 1 ? 's' : ''} · {totalCount} total
             </p>

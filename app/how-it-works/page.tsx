@@ -1,8 +1,23 @@
 export const dynamic = 'force-dynamic'
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Header } from '@/components/Header'
 import { Footer } from '@/components/Footer'
+import { JsonLd } from '@/components/JsonLd'
+
+export const metadata: Metadata = {
+  title: 'How Fractional Property Co-Ownership Works in Nigeria',
+  description:
+    'A step-by-step guide to co-owning property in Nigeria with Own2gether: browse open raises, commit in naira, verify your identity, and receive registered shares in a property company. Plus how development deals and profit-sharing work.',
+  alternates: { canonical: '/how-it-works' },
+  openGraph: {
+    title: 'How Fractional Property Co-Ownership Works — Own2gether',
+    description:
+      'Step-by-step guide to co-owning property in Nigeria: browse raises, commit in naira, get registered shares. Plus how profit-sharing development deals work.',
+    url: 'https://www.own2gether.com/how-it-works',
+  },
+}
 
 // ─── Listings steps ───────────────────────────────────────────────────────────
 
@@ -243,9 +258,20 @@ const DEAL_FAQS = [
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const faqLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [...LISTING_FAQS, ...DEAL_FAQS].map(({ q, a }) => ({
+    '@type': 'Question',
+    name: q,
+    acceptedAnswer: { '@type': 'Answer', text: a },
+  })),
+}
+
 export default function HowItWorksPage() {
   return (
     <>
+      <JsonLd data={faqLd} />
       <Header />
 
       {/* Hero */}

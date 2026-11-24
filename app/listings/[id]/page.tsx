@@ -1,9 +1,12 @@
 export const dynamic = 'force-dynamic'
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
+import { extractCity } from '@/lib/location'
+import { JsonLd } from '@/components/JsonLd'
 import { getFxRates, fxApproxLine, fxConvert, fxTimestampLabel } from '@/lib/fx'
 import { formatNGN, formatNGNCompact } from '@/lib/currency'
 import { Header } from '@/components/Header'
@@ -67,6 +70,56 @@ function buildDisplayRows(ranked: RankedEntry[], coOwnerPool: Prisma.Decimal): D
   }
 
   return rows
+}
+
+// ─── Metadata ────────────────────────────────────────────────────────────────
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}): Promise<Metadata> {
+  const { id } = await params
+  const property = await db.property.findUnique({
+    where:  { id },
+    select: { title: true, location: true, description: true, photos: true, totalRaise: true, propertyType: true },
+  })
+
+  if (!property) return { title: 'Listing not found' }
+
+  const typeLabel = property.propertyType ? `${property.propertyType} ` : ''
+  const city = extractCity(property.location)
+  const title = `Co-own ${property.title} in ${property.location}`
+  const description =
+    property.description?.trim().slice(0, 155) ||
+    `Fractional property ownership in ${city}, Nigeria. Co-own this ${typeLabel}property in ${property.location} — pool funds with other investors, commit in naira, and receive registered shares. Raise target ${formatNGNCompact(Number(property.totalRaise))}.`
+
+  const url = `https://www.own2gether.com/listings/${id}`
+
+  return {
+    title,
+    description,
+    keywords: [
+      `fractional property ownership ${city}`,
+      `co-own property in ${city}`,
+      `property for sale ${city}`,
+      `buy property together ${city}`,
+    ],
+    alternates: { canonical: `/listings/${id}` },
+    openGraph: {
+      type: 'article',
+      title: `${title} — Own2gether`,
+      description,
+      url,
+      images: property.photos?.length ? [{ url: property.photos[0] }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${title} — Own2gether`,
+      description,
+      images: property.photos?.length ? [property.photos[0]] : undefined,
+    },
+  }
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
@@ -136,10 +189,45 @@ export default async function ListingPage({
     classes: 'bg-surface-info text-text-secondary',
   }
 
+  // ── Structured data ───────────────────────────────────────────────────────
+  const listingLd = {
+    '@context': 'https://schema.org',
+    '@type': 'RealEstateListing',
+    name: property.title,
+    description: property.description?.trim() || `Co-own ${property.title} in ${property.location}, Nigeria.`,
+    url: `https://www.own2gether.com/listings/${id}`,
+    image: property.photos?.length ? property.photos : undefined,
+    datePosted: property.createdAt.toISOString(),
+    offers: {
+      '@type': 'Offer',
+      price: Number(totalRaise),
+      priceCurrency: 'NGN',
+      availability:
+        property.status === 'open'
+          ? 'https://schema.org/InStock'
+          : 'https://schema.org/SoldOut',
+    },
+    ...(property.areaSize || property.bedrooms != null || property.bathrooms != null
+      ? {
+          itemOffered: {
+            '@type': property.propertyType === 'Land' ? 'Place' : 'SingleFamilyResidence',
+            ...(property.bedrooms != null ? { numberOfRooms: property.bedrooms } : {}),
+            address: { '@type': 'PostalAddress', addressLocality: property.location, addressCountry: 'NG' },
+          },
+        }
+      : {
+          itemOffered: {
+            '@type': 'Place',
+            address: { '@type': 'PostalAddress', addressLocality: property.location, addressCountry: 'NG' },
+          },
+        }),
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <>
+      <JsonLd data={listingLd} />
       <Header />
 
       <main className="max-w-5xl mx-auto px-6 py-10">
