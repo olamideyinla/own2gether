@@ -90,7 +90,7 @@ export async function generateMetadata({
   const title = `Co-own ${property.title} in ${property.location}`
   const description =
     property.description?.trim().slice(0, 155) ||
-    `Co-own this ${typeLabel}property in ${property.location}, Nigeria through fractional ownership. Pool funds with other investors — commit in naira and receive registered shares. Raise target ${formatNGNCompact(Number(property.totalRaise))}.`
+    `Co-own this ${typeLabel}property in ${property.location}, Nigeria through fractional property ownership. Pool funds with other investors — commit in naira and receive registered shares. Raise target ${formatNGNCompact(Number(property.totalRaise))}.`
 
   const url = `https://www.own2gether.com/listings/${id}`
 

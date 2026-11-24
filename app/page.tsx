@@ -14,12 +14,12 @@ import { FilterPills } from '@/components/FilterPills'
 import { SubscribeForm } from '@/components/SubscribeForm'
 
 export const metadata: Metadata = {
-  title: 'Co-Own Property in Nigeria — Fractional Ownership Raises',
+  title: 'Fractional Property Ownership in Nigeria — Co-Own Real Estate',
   description:
     'Browse open raises to co-own real property in Nigeria. Pool funds with other local and diaspora investors, get registered shares in a property company, and co-invest in development deals — no fund, no cash fees.',
   alternates: { canonical: '/' },
   openGraph: {
-    title: 'Co-Own Property in Nigeria — Fractional Ownership Raises | Own2gether',
+    title: 'Fractional Property Ownership in Nigeria — Co-Own Real Estate | Own2gether',
     description:
       'Pool funds with other investors to co-own real property in Nigeria. Browse open raises in naira — no fund, no cash fees.',
     url: 'https://www.own2gether.com',
